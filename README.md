@@ -3,12 +3,16 @@
 This Readme is for the custom build of Kibana to cater for specific requirements of Greyscale AI. Please look here for stock Kibana [ReadMe](README-Kibana.md).
 
 # Development environment
-The development environment for this custom build is catered as a set of docker images. Please install docker engine on your machine and perform the following steps:
-1. Clone this [repository](https://github.com/greyscaleai521/kibana.git)
+The development environment for this custom build is catered as a set of docker images. Please install docker engine on your machine as pre-requisite. Ideally, we would have liked the entire repository and source code to be available on the local host and to be mounted as volume inside the development environment container. However, the source files on a windows host file system create a problem when building Kibana. Thus, we have configured the images to download the latest code inside them 
+1. Get into working directory, and copy the docker and docker-compose files.
+```bash
+curl -O https://raw.githubusercontent.com/greyscaleai521/kibana/gs-dev/Dockerfile-gs.dev &&
+curl -O https://raw.githubusercontent.com/greyscaleai521/kibana/gs-dev/docker-compose-gs.dev.yml
+```
 2. Step into kibana folder
 3. Run docker-compose up for the development environment docker compose file
 ```bash
-docker-compose up -f docker-compose-gs.dev.yml
+docker-compose -f docker-compose-gs.dev.yml up
 ```
 4. Get into the docker container with the following command
 ```bash

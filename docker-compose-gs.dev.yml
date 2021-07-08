@@ -2,6 +2,12 @@ version: "3.8"
 services:
     kibana:
       build:
+        context: .
         dockerfile: Dockerfile-gs.dev
-
-
+      volumes:
+        - type: volume
+          source: kibana-src
+          target: /code
+          
+volumes: 
+  kibana-src:

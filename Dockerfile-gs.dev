@@ -1,10 +1,30 @@
 # Docker file to set-up Greyscale's Kibana development environment
 
 FROM ubuntu:20.04
+ARG GIT_TOKEN=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
 
-WORKDIR /kibana
+WORKDIR /work
 
-# Install nvm
-CMD curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.0/install.sh | bash &&
-    nvm install &&
-    nvm use
+# Install pre-requisite - git, curl, vi and nvm
+RUN apt-get update && \
+    apt-get install -y curl git
+
+RUN curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.0/install.sh | bash
+
+# Download and expand the git repository
+# RUN curl -# -H "Authorization: token ${GIT_TOKEN}" -L https://api.github.com/repos/greyscaleai521/kibana/tarball -o kibana.tgz && \
+#     tar xzf kibana.tgz && \
+#     mv $(ls | grep greyscaleai521-kibana*) kibana
+
+# Install dependencies
+
+# Get .nvmrc from github and install node 
+RUN bash -c ". /root/.nvm/nvm.sh \
+             && nvm install $(curl -s -H \"Authorization: token ${GIT_TOKEN}\" https://raw.githubusercontent.com/greyscaleai521/kibana/gs-dev/.nvmrc)" 
+
+WORKDIR /code
+
+# Clone the Kibana repository
+RUN git clone https://${GIT_TOKEN}@github.com/greyscaleai521/kibana.git
+
+VOLUME [ "/code" ]
