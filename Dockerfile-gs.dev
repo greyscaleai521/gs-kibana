@@ -9,15 +9,12 @@
 
 #
 # Usage: - when Kibana source is available on host in ./code folder
-#   1. Get into folder containing code/kibana
-#   2. Copy docker files if needed
-#       cp ./code/kibana/docker-compose-gs.yml ./
-#       cp ./code/kibana/Dockerfile-gs.dev ./
-#   3. Build the image from this dockerfile tagging to gs-kibana: version
+#   1. Get into folder gs-kibana
+#   2. Build the image from this dockerfile tagging to gs-kibana: version
 #       docker build -f Dockerfile-gs.dev -t gs-kibana:latest --build-arg GIT_TOKEN=???? .
-#   4. Run docker compose - ensure bind mount is uncommented docker compose file
+#   3. Run docker compose - ensure bind mount is uncommented docker compose file
 #       docker-compose -f docker-compose-gs.dev.yml run --rm kibana
-#   5. On the bash prompt, you can now continue with further development as per 
+#   4. On the bash prompt, you can now continue with further development as per 
 #      this document: https://www.elastic.co/guide/en/kibana/master/development-getting-started.html
 #
 
@@ -68,17 +65,25 @@ RUN bash -c "   . ~/.nvm/nvm.sh && \
             " 
 WORKDIR /code/kibana
 
-# switch to root, let the entrypoint drop back to gsdev
 # Copied from https://github.com/sudo-bmitch/jenkins-docker
+# switch to root, let the entrypoint drop back to gsdev
 USER root
-COPY gs-entrypoint.sh /gs-entrypoint.sh
-RUN chmod +x /entrypoint.sh
 # install gosu for a better su+exec command
 ARG GOSU_VERSION=1.10
 RUN dpkgArch="$(dpkg --print-architecture | awk -F- '{ print $NF }')" \
  && curl -L -o /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch" \
  && chmod +x /usr/local/bin/gosu \
  && gosu nobody true 
+
+COPY gs-entrypoint.sh /gs-entrypoint.sh
+RUN chmod +x /gs-entrypoint.sh
+
+# Add Tini
+ENV TINI_VERSION v0.19.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
+RUN chmod +x /tini
+
+WORKDIR /code/kibana
 ENTRYPOINT ["/gs-entrypoint.sh"]
 
 VOLUME [ "/code" ]
