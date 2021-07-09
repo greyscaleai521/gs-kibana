@@ -1,30 +1,101 @@
 # Docker file to set-up Greyscale's Kibana development environment
 
-FROM ubuntu:20.04
-ARG GIT_TOKEN=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
+#
+# ToDo:
+#   1. Someday prefer automatic uid/gid resolution via entrypoint https://github.com/sudo-bmitch/jenkins-docker/blob/main/entrypoint.sh
+#   2. Try to get the correct version of node by curling over to the git repository and getting the .nvmrc file. That would require
+#      proper handling of secrets using buildkit. See notes in scrappad at the end of this file.
+#
 
-WORKDIR /work
+#
+# Usage: - when Kibana source is available on host in ./code folder
+#   1. Get into folder containing code/kibana
+#   2. Copy docker files if needed
+#       cp ./code/kibana/docker-compose-gs.yml ./
+#       cp ./code/kibana/Dockerfile-gs.dev ./
+#   3. Build the image from this dockerfile tagging to gs-kibana: version
+#       docker build -f Dockerfile-gs.dev -t gs-kibana:latest --build-arg GIT_TOKEN=???? .
+#   4. Run docker compose - ensure bind mount is uncommented docker compose file
+#       docker-compose -f docker-compose-gs.dev.yml run --rm kibana
+#   5. On the bash prompt, you can now continue with further development as per 
+#      this document: https://www.elastic.co/guide/en/kibana/master/development-getting-started.html
+#
 
-# Install pre-requisite - git, curl, vi and nvm
-RUN apt-get update && \
-    apt-get install -y curl git
 
-RUN curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.0/install.sh | bash
+FROM ubuntu:20.04 AS build
 
-# Download and expand the git repository
+ARG GIT_TOKEN=invalidtokenmustbepassedfromenvironment
+ARG UNAME=gsdev
+ARG UID=1111
+ARG GID=1111
+ARG NODE_VERSION=14.17.2
+# Pass above args as following
+#   docker build -f Dockerfile-gs.dev -t gs-kibana:latest --build-arg NODE_VERSION=14.17.3 .
+
+# Install development tools git, gcc, curl, python
+RUN apt-get update && apt-get install -y \
+        curl \
+        gcc \
+        git \
+        python \
+        && rm -rf /var/lib/apt/lists/*       
+
+# Prepare to work on Kibana code, switching to a normal developer user
+RUN groupadd --gid $GID $UNAME && \
+    useradd --no-log-init --create-home --gid $GID --uid $UID  --shell /bin/bash  $UNAME
+USER $UNAME
+
+
+FROM build
+
+# Clone and keep the Kibana repository inside the image. This downloaded repository inside the image
+# can then be mounted on a named volume and copied out on host file system (docker cp). Source download increases the 
+# image size. You have the benefit of having a local copy of the source code inside the image which can be extracted
+# out without redownloading whole respository.
+# If you already have kibana code cloned and ready to work on, comment out the git clone.
+
+# RUN git clone https://${GIT_TOKEN}@github.com/greyscaleai521/kibana.git
+
+# Install nvm and node for development user. You will have to do 'nvm use' again from inside bind mounted kibana source
+# code folder.
+RUN curl --no-progress-meter -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.0/install.sh | bash
+RUN bash -c "   . ~/.nvm/nvm.sh && \
+                nvm install $NODE_VERSION \
+            " 
+RUN bash -c "   . ~/.nvm/nvm.sh && \
+                nvm use $NODE_VERSION && \
+                npm install -g yarn \
+            " 
+WORKDIR /code/kibana
+
+# switch to root, let the entrypoint drop back to gsdev
+# Copied from https://github.com/sudo-bmitch/jenkins-docker
+USER root
+COPY gs-entrypoint.sh /gs-entrypoint.sh
+RUN chmod +x /entrypoint.sh
+# install gosu for a better su+exec command
+ARG GOSU_VERSION=1.10
+RUN dpkgArch="$(dpkg --print-architecture | awk -F- '{ print $NF }')" \
+ && curl -L -o /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch" \
+ && chmod +x /usr/local/bin/gosu \
+ && gosu nobody true 
+ENTRYPOINT ["/gs-entrypoint.sh"]
+
+VOLUME [ "/code" ]
+
+
+
+# Scrap pad - for later reference
+
+# To download the Kibana repository using github api in tgz format.
+
 # RUN curl -# -H "Authorization: token ${GIT_TOKEN}" -L https://api.github.com/repos/greyscaleai521/kibana/tarball -o kibana.tgz && \
 #     tar xzf kibana.tgz && \
 #     mv $(ls | grep greyscaleai521-kibana*) kibana
 
-# Install dependencies
-
-# Get .nvmrc from github and install node 
-RUN bash -c ". /root/.nvm/nvm.sh \
-             && nvm install $(curl -s -H \"Authorization: token ${GIT_TOKEN}\" https://raw.githubusercontent.com/greyscaleai521/kibana/gs-dev/.nvmrc)" 
-
-WORKDIR /code
-
-# Clone the Kibana repository
-RUN git clone https://${GIT_TOKEN}@github.com/greyscaleai521/kibana.git
-
-VOLUME [ "/code" ]
+# To get the node version from git repo:
+# -- see bug, when GIT_TOKEN is incorrect, this creates problem rather than
+# failing gracefully. Instead, use NODE_VERSION right now.
+# RUN bash -c "   . /root/.nvm/nvm.sh && \
+#                 nvm install $(curl -s -H \"Authorization: token ${GIT_TOKEN}\" https://raw.githubusercontent.com/greyscaleai521/kibana/gs-dev/.nvmrc) \
+#             " 

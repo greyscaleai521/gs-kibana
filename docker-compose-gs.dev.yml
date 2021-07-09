@@ -1,13 +1,38 @@
+#
+# Usage: - when Kibana source is available on host in ./code folder
+#   1. Get into folder containing code/kibana
+#   2. Copy docker files if needed
+#       cp ./code/kibana/docker-compose-gs.yml ./
+#       cp ./code/kibana/Dockerfile-gs.dev ./
+#   3. Build the image from this dockerfile tagging to gs-kibana: version
+#       docker build -f Dockerfile-gs.dev -t gs-kibana:latest --build-arg GIT_TOKEN=???? .
+#   4. Run docker compose - ensure bind mount is uncommented docker compose file
+#       docker-compose -f docker-compose-gs.dev.yml run --rm kibana
+#   5. On the bash prompt, you can now continue with further development as per 
+#      this document: https://www.elastic.co/guide/en/kibana/master/development-getting-started.html
+#
+
+
 version: "3.8"
+
 services:
     kibana:
-      build:
-        context: .
-        dockerfile: Dockerfile-gs.dev
+      image: gs-kibana
+      entrypoint: /bin/bash
       volumes:
-        - type: volume
-          source: kibana-src
+      # When kibana source is inside code folder on host -- normal dev operation
+        - type: bind
+          source: ./code
           target: /code
-          
-volumes: 
-  kibana-src:
+      # When kibana source is to be copied over from image using docker cp from 
+      # an image which had done git clone in /code
+        # - type: volume
+        #   source: kibana-src
+        #   target: /code
+      ports: 
+        - "5601:5601" # Kibana
+        - "9200:9200" # Elastic Search
+
+# Use the volume below when cloning kibana into image
+# volumes: 
+#   kibana-src:
