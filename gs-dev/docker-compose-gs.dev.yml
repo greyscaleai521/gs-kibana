@@ -2,7 +2,7 @@
 # Usage: -  see Dockerfile-gs.dev
 #
 
-version: "3.8"
+version: "3.3"
 
 services:
   kibana:
@@ -10,7 +10,7 @@ services:
     volumes:
       # When kibana source is inside code folder on host -- normal dev operation
       - type: bind
-        source: ./
+        source: ../
         target: /gs-kibana
       # When kibana source is to be copied out from an image using docker cp
         # - type: volume

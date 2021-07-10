@@ -19,7 +19,7 @@
 #         in vscode. The terminal will be a wsl terminal, and vscode will properly link
 #         back into WSL, allowing you to have near-native linux development experience.
 #
-#   1. Get into folder gs-kibana ad clone using 
+#   1. Get into your working unix filesystem folder and  clone using 
 #       git clone https://${GIT_TOKEN}@github.com/greyscaleai521/gs-kibana.git
 #      If already cloned out, you can do 'git pull' to get latest changes. If on windows,
 #      make sure to run git commands from within a WSL shell.
@@ -29,7 +29,7 @@
 #       the docker image. This is important for getting right file system permission and
 #       avoiding build failures.
 #
-#   3. Build the image from this dockerfile tagging to gs-kibana:latest
+#   3. Get into gs-dev folder. Build the image from this dockerfile tagging to gs-kibana:latest
 #       docker build -f Dockerfile-gs.dev -t gs-kibana:latest --build-arg UID=<UID> GID=<GID> .
 #
 #   4. Run docker compose - ensure bind mount is uncommented docker compose file
