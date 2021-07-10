@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# Not to be used - doesn't fix the build errors from windows file system
+# and not needed when devcontainer mounts files from WSL/Linux file system
+
 # Adapted from https://github.com/sudo-bmitch/jenkins-docker/blob/main/entrypoint.sh
 # By: Brandon Mitchell <public@bmitch.net>
 # License: MIT

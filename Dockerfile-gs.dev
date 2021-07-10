@@ -2,59 +2,81 @@
 
 #
 # ToDo:
-#   1. Someday prefer automatic uid/gid resolution via entrypoint https://github.com/sudo-bmitch/jenkins-docker/blob/main/entrypoint.sh
-#   2. Try to get the correct version of node by curling over to the git repository and getting the .nvmrc file. That would require
+#   1. Try to get the correct version of node by curling over to the git repository and getting the .nvmrc file. That would require
 #      proper handling of secrets using buildkit. See notes in scrappad at the end of this file.
+#   2. Handle GIT_TOKEN securely
 #
 
 #
-# Usage: - when Kibana source is available on host in ./code folder
-#   1. Get into folder gs-kibana
-#   2. Build the image from this dockerfile tagging to gs-kibana: version
-#       docker build -f Dockerfile-gs.dev -t gs-kibana:latest --build-arg GIT_TOKEN=???? .
-#   3. Run docker compose - ensure bind mount is uncommented docker compose file
+# Usage:
+#   0. Kibana source requires unix filesystem. 
+#      a. Checkout gs-kibana on a WSL linux directory, or on your own linux system. 
+#      b. When using WSL, make sure that your distro is linked to docker
+#         desktop. Check Docker Desktop -> Settings -> Resources -> WSL Integration. 
+#         This will allow you to run both docker containers in WSL and those on windows
+#         powershell to be managed in an integrated way.
+#      c. When using WSL, you can do 'code .' in gs-kibana directory to open the source
+#         in vscode. The terminal will be a wsl terminal, and vscode will properly link
+#         back into WSL, allowing you to have near-native linux development experience.
+#
+#   1. Get into folder gs-kibana ad clone using 
+#       git clone https://${GIT_TOKEN}@github.com/greyscaleai521/gs-kibana.git
+#      If already cloned out, you can do 'git pull' to get latest changes. If on windows,
+#      make sure to run git commands from within a WSL shell.
+#
+#   2. Get into folder gs-kibana and check the user and group ID of the folder files using
+#      'ls -ln' command. Note the <UID> and <GID> to be used in next step step when building
+#       the docker image. This is important for getting right file system permission and
+#       avoiding build failures.
+#
+#   3. Build the image from this dockerfile tagging to gs-kibana:latest
+#       docker build -f Dockerfile-gs.dev -t gs-kibana:latest --build-arg UID=<UID> GID=<GID> .
+#
+#   4. Run docker compose - ensure bind mount is uncommented docker compose file
 #       docker-compose -f docker-compose-gs.dev.yml run --rm kibana
-#   4. On the bash prompt, you can now continue with further development as per 
+#
+#   5. On the bash prompt, you can now continue with further development as per 
 #      this document: https://www.elastic.co/guide/en/kibana/master/development-getting-started.html
 #
 
 
 FROM ubuntu:20.04 AS build
 
-ARG GIT_TOKEN=invalidtokenmustbepassedfromenvironment
+
 ARG UNAME=gsdev
-ARG UID=1111
-ARG GID=1111
+# Check and set below (or pass as build-args) the user-id owning the kibana source files 
+# on your linux/wsl system.
+ARG UID=1000
+ARG GID=1000
 ARG NODE_VERSION=14.17.2
-# Pass above args as following
-#   docker build -f Dockerfile-gs.dev -t gs-kibana:latest --build-arg NODE_VERSION=14.17.3 .
+ARG CLONE_KIBANA=false
+ARG GIT_TOKEN=provideasbuildargs
 
 # Install development tools git, gcc, curl, python
 RUN apt-get update && apt-get install -y \
+        build-essential \
         curl \
         gcc \
         git \
-        python \
+        python3 \
         && rm -rf /var/lib/apt/lists/*       
 
-# Prepare to work on Kibana code, switching to a normal developer user
+# Create development user
 RUN groupadd --gid $GID $UNAME && \
     useradd --no-log-init --create-home --gid $GID --uid $UID  --shell /bin/bash  $UNAME
 USER $UNAME
 
 
-FROM build
-
 # Clone and keep the Kibana repository inside the image. This downloaded repository inside the image
 # can then be mounted on a named volume and copied out on host file system (docker cp). Source download increases the 
 # image size. You have the benefit of having a local copy of the source code inside the image which can be extracted
 # out without redownloading whole respository.
-# If you already have kibana code cloned and ready to work on, comment out the git clone.
+# If you already have kibana code cloned and ready to work on set CLONE_KIBANA to false and avoid this download
+WORKDIR /gs-kibana-src
+RUN if $CLONE_KIBANA ; then git clone https://${GIT_TOKEN}@github.com/greyscaleai521/kibana.git ; fi
 
-# RUN git clone https://${GIT_TOKEN}@github.com/greyscaleai521/kibana.git
-
-# Install nvm and node for development user. You will have to do 'nvm use' again from inside bind mounted kibana source
-# code folder.
+# Install nvm, node and yarn for development user. You will have to do 'nvm use' again from inside bind mounted kibana source
+# code folder to use them.
 RUN curl --no-progress-meter -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.0/install.sh | bash
 RUN bash -c "   . ~/.nvm/nvm.sh && \
                 nvm install $NODE_VERSION \
@@ -63,34 +85,16 @@ RUN bash -c "   . ~/.nvm/nvm.sh && \
                 nvm use $NODE_VERSION && \
                 npm install -g yarn \
             " 
-WORKDIR /code/kibana
 
-# Copied from https://github.com/sudo-bmitch/jenkins-docker
-# switch to root, let the entrypoint drop back to gsdev
-USER root
-# install gosu for a better su+exec command
-ARG GOSU_VERSION=1.10
-RUN dpkgArch="$(dpkg --print-architecture | awk -F- '{ print $NF }')" \
- && curl -L -o /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch" \
- && chmod +x /usr/local/bin/gosu \
- && gosu nobody true 
-
-COPY gs-entrypoint.sh /gs-entrypoint.sh
-RUN chmod +x /gs-entrypoint.sh
-
-# Add Tini
-ENV TINI_VERSION v0.19.0
-ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
-RUN chmod +x /tini
-
-WORKDIR /code/kibana
-ENTRYPOINT ["/gs-entrypoint.sh"]
-
-VOLUME [ "/code" ]
+# Set-up work directory, and, volumes for gs-kibana bind-mount, and gs-kibana-src volume
+WORKDIR /gs-kibana
+VOLUME [ "/gs-kibana" ]
+VOLUME [ "/gs-kibana-src" ]
 
 
-
+##########################################
 # Scrap pad - for later reference
+##########################################
 
 # To download the Kibana repository using github api in tgz format.
 
@@ -104,3 +108,27 @@ VOLUME [ "/code" ]
 # RUN bash -c "   . /root/.nvm/nvm.sh && \
 #                 nvm install $(curl -s -H \"Authorization: token ${GIT_TOKEN}\" https://raw.githubusercontent.com/greyscaleai521/kibana/gs-dev/.nvmrc) \
 #             " 
+
+# # For GID changes - which failed to fix errors on bind mounts from windows fileysystem
+# # Copied from https://github.com/sudo-bmitch/jenkins-docker 
+
+#     # switch to root, let the entrypoint drop back to gsdev
+#     USER root
+
+#     # install gosu for a better su+exec command -- used in gs-entrypoint
+#     ARG GOSU_VERSION=1.10
+#     RUN dpkgArch="$(dpkg --print-architecture | awk -F- '{ print $NF }')" \
+#     && curl -L -o /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch" \
+#     && chmod +x /usr/local/bin/gosu \
+#     && gosu nobody true 
+
+#     # Add Tini -- used in gs-entrypoint
+#     ENV TINI_VERSION v0.19.0
+#     ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
+#     RUN chmod +x /tini
+
+#     # gs-entrypoint provisions for group id of gsdev inside container match that on host.
+#     COPY gs-entrypoint.sh /gs-entrypoint.sh
+#     RUN chmod +x /gs-entrypoint.sh
+
+# # Finished copy from https://github.com/sudo-bmitch/jenkins-docker
